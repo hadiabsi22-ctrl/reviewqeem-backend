@@ -1,46 +1,54 @@
-// ===============================================================
-// Admin Auth Controller - Stable Version
-// ===============================================================
+import jwt from 'jsonwebtoken';
 
-import jwt from "jsonwebtoken";
-
-// نستخدم مفتاح ثابت
 const JWT_SECRET = process.env.JWT_SECRET || "reviewqeem_admin_secret_2025";
 
-// -----------------------------------------------------------
-// تسجيل الدخول
-// -----------------------------------------------------------
 export const loginAdmin = (req, res) => {
     const { email, password } = req.body;
+    
+    // ⚠️ **الحل المباشر: يقبل أي بريد أدمن + كلمة مرور Admin@123**
+    const ALLOWED_EMAILS = [
+        'admin@reviewqeem.com',
+        'master@reviewqeem.com', 
+        'temp@example.com',
+        'hadi@reviewqeem.com',
+        'test@reviewqeem.com'
+    ];
+    
+    const CORRECT_PASSWORD = "Admin@123";
+    
+    if (ALLOWED_EMAILS.includes(email) && password === CORRECT_PASSWORD) {
+        const admin = {
+            id: "admin_fixed_001",
+            email: email,
+            name: "مدير النظام",
+            role: "super_admin",
+            permissions: ["all"]
+        };
 
-    // ⚠️ نسخة اختبار: أي بريد + أي كلمة مرور = تسجيل دخول ناجح
-    const admin = {
-        id: "TEST_ADMIN_01",
-        email: email || "test@reviewqeem.com",
-        name: "Test Admin",
-        role: "super_admin"
-    };
+        const token = jwt.sign(admin, JWT_SECRET, { expiresIn: "24h" });
 
-    const token = jwt.sign(admin, JWT_SECRET, { expiresIn: "24h" });
+        res.cookie("admin_token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            path: "/",
+            maxAge: 24 * 60 * 60 * 1000
+        });
 
-    res.cookie("admin_token", token, {
-        httpOnly: true,
-        secure: true,
-        sameSite: "none",
-        path: "/",
-        maxAge: 24 * 60 * 60 * 1000
-    });
+        return res.json({
+            success: true,
+            message: "✅ تم الدخول بنجاح!",
+            admin: admin
+        });
+    }
 
-    return res.json({
-        success: true,
-        message: "Login Success (TEST MODE)",
-        admin
+    // إذا فشل
+    return res.status(401).json({
+        success: false,
+        message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
     });
 };
 
-// -----------------------------------------------------------
-// التحقق من الجلسة
-// -----------------------------------------------------------
 export const verifyToken = (req, res) => {
     try {
         const token = req.cookies.admin_token;
@@ -48,7 +56,7 @@ export const verifyToken = (req, res) => {
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: "No active session"
+                message: "لا توجد جلسة نشطة"
             });
         }
 
@@ -62,14 +70,11 @@ export const verifyToken = (req, res) => {
     } catch (error) {
         return res.status(401).json({
             success: false,
-            message: "Invalid or expired session"
+            message: "الجلسة منتهية أو غير صالحة"
         });
     }
 };
 
-// -----------------------------------------------------------
-// تسجيل الخروج
-// -----------------------------------------------------------
 export const logout = (req, res) => {
     res.clearCookie("admin_token", {
         path: "/",
@@ -79,46 +84,6 @@ export const logout = (req, res) => {
 
     return res.json({
         success: true,
-        message: "Logged out"
-    });
-};
-
-// -----------------------------------------------------------
-// إرجاع بيانات الملف الشخصي
-// -----------------------------------------------------------
-export const getAdminProfile = (req, res) => {
-    try {
-        const token = req.cookies.admin_token;
-
-        if (!token) {
-            return res.status(401).json({
-                success: false,
-                message: "No active session"
-            });
-        }
-
-        const decoded = jwt.verify(token, JWT_SECRET);
-
-        return res.json({
-            success: true,
-            admin: decoded
-        });
-
-    } catch {
-        return res.status(401).json({
-            success: false,
-            message: "Session invalid"
-        });
-    }
-};
-
-// -----------------------------------------------------------
-// نقطة اختبار
-// -----------------------------------------------------------
-export const testEndpoint = (req, res) => {
-    res.json({
-        success: true,
-        message: "Admin Auth API Running",
-        time: new Date().toISOString()
+        message: "تم تسجيل الخروج"
     });
 };
