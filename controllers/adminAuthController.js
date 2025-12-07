@@ -90,39 +90,9 @@ export const loginAdmin = async (req, res) => {
             });
         }
 
-        // ===========================================================
-        // 🚀 MASTER ADMIN LOGIN
-        // ===========================================================
-        if (email === "master@reviewqeem.com" && password === "Admin@123") {
-            const tokenPayload = {
-                id: "MASTER",
-                email: "master@reviewqeem.com",
-                name: "Master Admin",
-                role: "super_admin"
-            };
-
-            const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: "24h" });
-
-            res.cookie("admin_token", token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "lax",
-                maxAge: 24 * 60 * 60 * 1000,
-                path: "/"
-            });
-
-            return res.json({
-                success: true,
-                message: "تم تسجيل الدخول (Master Admin)",
-                user: tokenPayload
-            });
-        }
-
-        // ===========================================================
-        // البحث عن الأدمن الحقيقي (من قاعدة البيانات)
-        // ===========================================================
-
-        const admin = await Admin.findOne({ email: email.toLowerCase().trim() });
+        const admin = await Admin.findOne({
+            email: email.toLowerCase().trim()
+        });
 
         if (!admin) {
             return res.status(401).json({
@@ -135,18 +105,23 @@ export const loginAdmin = async (req, res) => {
             const remainingMinutes = Math.ceil((admin.lockUntil - Date.now()) / 60000);
             return res.status(423).json({
                 success: false,
-                message: `الحساب مقفل مؤقتاً. يرجى المحاولة بعد ${remainingMinutes} دقيقة`
+                message: `الحساب مقفل. حاول بعد ${remainingMinutes} دقيقة`
             });
         }
 
         const validPassword = await bcrypt.compare(password, admin.password);
 
         if (!validPassword) {
+            const attempts = await incrementLoginAttempts(admin._id);
+
             return res.status(401).json({
                 success: false,
-                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة",
+                attempts
             });
         }
+
+        await resetLoginAttempts(admin._id);
 
         const tokenPayload = {
             id: admin._id,
@@ -167,21 +142,21 @@ export const loginAdmin = async (req, res) => {
 
         res.json({
             success: true,
-            message: "تم تسجيل الدخول بنجاح",
-            user: tokenPayload
+            message: "تم تسجيل الدخول",
+            admin: tokenPayload
         });
 
     } catch (error) {
-        console.error("❌ خطأ في تسجيل الدخول:", error);
+        console.error("❌ Login error:", error);
         res.status(500).json({
             success: false,
-            message: "حدث خطأ في الخادم. يرجى المحاولة لاحقاً."
+            message: "خطأ في السيرفر أثناء تسجيل الدخول"
         });
     }
 };
 
 // ===============================================================
-// التحقق من صحة التوكن (مهم جدًا للواجهة)
+// التحقق من صحة التوكن
 // ===============================================================
 
 export const verifyToken = async (req, res) => {
@@ -196,26 +171,15 @@ export const verifyToken = async (req, res) => {
         }
 
         let decoded;
-
         try {
             decoded = jwt.verify(token, JWT_SECRET);
-        } catch (error) {
+        } catch (err) {
             return res.status(401).json({
                 success: false,
-                message: "الجلسة غير صالحة أو انتهت صلاحيتها"
+                message: "الجلسة غير صالحة أو انتهت"
             });
         }
 
-        // ===================== MASTER ADMIN =======================
-        if (decoded.id === "MASTER") {
-            return res.json({
-                success: true,
-                message: "الجلسة نشطة وصالحة",
-                user: decoded
-            });
-        }
-
-        // ===================== DATABASE ADMIN =====================
         const admin = await Admin.findById(decoded.id)
             .select("-password -loginAttempts -lockUntil");
 
@@ -226,17 +190,15 @@ export const verifyToken = async (req, res) => {
             });
         }
 
-        return res.json({
+        res.json({
             success: true,
-            message: "الجلسة نشطة وصالحة",
-            user: admin
+            admin
         });
 
-    } catch (error) {
-        console.error("❌ خطأ في التحقق من الجلسة:", error);
+    } catch (err) {
         res.status(500).json({
             success: false,
-            message: "حدث خطأ في التحقق من الجلسة"
+            message: "خطأ في التحقق من الجلسة"
         });
     }
 };
@@ -256,13 +218,13 @@ export const logout = async (req, res) => {
 
         res.json({
             success: true,
-            message: "تم تسجيل الخروج بنجاح"
+            message: "تم تسجيل الخروج"
         });
 
-    } catch (error) {
+    } catch (err) {
         res.status(500).json({
             success: false,
-            message: "حدث خطأ في تسجيل الخروج"
+            message: "خطأ أثناء تسجيل الخروج"
         });
     }
 };
@@ -273,18 +235,6 @@ export const logout = async (req, res) => {
 
 export const getAdminProfile = async (req, res) => {
     try {
-        if (req.admin?.id === "MASTER") {
-            return res.json({
-                success: true,
-                user: {
-                    id: "MASTER",
-                    email: "master@reviewqeem.com",
-                    name: "Master Admin",
-                    role: "super_admin"
-                }
-            });
-        }
-
         const admin = await Admin.findById(req.admin.id)
             .select("-password -loginAttempts -lockUntil");
 
@@ -297,63 +247,13 @@ export const getAdminProfile = async (req, res) => {
 
         res.json({
             success: true,
-            user: admin
+            admin
         });
 
     } catch (error) {
         res.status(500).json({
             success: false,
-            message: "خطأ في جلب المعلومات"
-        });
-    }
-};
-
-// ===============================================================
-// تعديل كلمة المرور
-// ===============================================================
-
-export const changePassword = async (req, res) => {
-    try {
-        const { currentPassword, newPassword } = req.body;
-
-        if (req.admin?.id === "MASTER") {
-            return res.status(403).json({
-                success: false,
-                message: "لا يمكن تغيير كلمة مرور الماستر"
-            });
-        }
-
-        const admin = await Admin.findById(req.admin.id);
-
-        if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: "الحساب غير موجود"
-            });
-        }
-
-        const validPassword = await bcrypt.compare(currentPassword, admin.password);
-
-        if (!validPassword) {
-            return res.status(401).json({
-                success: false,
-                message: "كلمة المرور الحالية غير صحيحة"
-            });
-        }
-
-        admin.password = await bcrypt.hash(newPassword, 12);
-        admin.updatedAt = new Date();
-        await admin.save();
-
-        res.json({
-            success: true,
-            message: "تم تغيير كلمة المرور بنجاح"
-        });
-
-    } catch (error) {
-        res.status(500).json({
-            success: false,
-            message: "حدث خطأ في تغيير كلمة المرور"
+            message: "حدث خطأ أثناء جلب البيانات"
         });
     }
 };
@@ -366,13 +266,6 @@ export const testEndpoint = (req, res) => {
     res.json({
         success: true,
         message: "Admin Auth API is working!",
-        version: "3.0",
-        authentication: "Cookie-based JWT",
         timestamp: new Date().toISOString()
     });
 };
-
-// ===============================================================
-// نهاية الملف
-// ===============================================================
-
