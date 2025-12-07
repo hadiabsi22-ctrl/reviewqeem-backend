@@ -24,8 +24,16 @@ import settingsRoutes from "./routes/settingsRoutes.js";
 import statsRoutes from "./routes/statsRoutes.js";
 import { createDefaultAdmin } from "./utils/createDefaultAdmin.js";
 
-// تحميل متغيرات البيئة
+// تحميل متغيرات البيئة - جرب طريقتين
 dotenv.config();
+import { fileURLToPath } from "url";
+import path from "path";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.join(__dirname, '.env') });
+
+console.log("🔍 Debug - MONGO_URI from env:", process.env.MONGO_URI);
+console.log("🔍 Debug - Current dir:", __dirname);
 
 // تعيين NODE_ENV إذا لم يكن محدد
 process.env.NODE_ENV = process.env.NODE_ENV || 'development';
@@ -174,21 +182,30 @@ app.use("/api/stats", apiLimiter, statsRoutes);
 // app.get("*", ... );
 
 // ===============================================================
-// MongoDB Connection
+// MongoDB Connection (FIXED VERSION)
 // ===============================================================
 const connectDB = async () => {
   try {
     console.log("⏳ Connecting to MongoDB Atlas...");
-    console.log("MONGO_URI from env:", process.env.MONGO_URI);
-    console.log("NODE_ENV:", process.env.NODE_ENV);
     
-    await mongoose.connect(process.env.MONGO_URI, {
+    // 🔴 الخيار 1: استخدم الـ URI مباشرة (احذف الكومنت عشان تشتغل)
+    const mongoURI = "mongodb+srv://hadiabsi22_db_user:1508pMWdAnmwg6Lc@cluster0.folvyxv.mongodb.net/reviewqeem?retryWrites=true&w=majority&appName=Cluster0";
+    
+    // 🔴 الخيار 2: أو جرب من الـ .env إذا اشتغلت
+    // const mongoURI = process.env.MONGO_URI || "mongodb+srv://hadiabsi22_db_user:1508pMWdAnmwg6Lc@cluster0.folvyxv.mongodb.net/reviewqeem?retryWrites=true&w=majority&appName=Cluster0";
+    
+    console.log("🔗 Using MONGO_URI:", mongoURI.substring(0, 60) + "...");
+    
+    await mongoose.connect(mongoURI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 5000, // 5 ثواني
+      socketTimeoutMS: 45000, // 45 ثانية
     });
     console.log("✅ MongoDB Connected Successfully!");
   } catch (err) {
-    console.error("❌ MongoDB Error:", err);
+    console.error("❌ MongoDB Error:", err.message);
+    console.error("🔍 Full error:", err);
     process.exit(1);
   }
 };
