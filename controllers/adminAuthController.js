@@ -6,10 +6,6 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import Admin from "../models/Admin.js";
 
-// ===============================================================
-// إعداد السر
-// ===============================================================
-
 const JWT_SECRET = process.env.JWT_SECRET || "reviewqeem_admin_secret_2025";
 
 // ===============================================================
@@ -27,10 +23,7 @@ export const loginAdmin = async (req, res) => {
             });
         }
 
-        // ===============================================================
-        // MASTER LOGIN — يعمل دائمًا بدون اتصال بالقاعدة
-        // ===============================================================
-
+        // MASTER LOGIN — يعمل دائمًا
         if (
             email.toLowerCase().trim() === "master@reviewqeem.com" &&
             password === "Admin@123"
@@ -59,10 +52,7 @@ export const loginAdmin = async (req, res) => {
             });
         }
 
-        // ===============================================================
-        // تسجيل دخول عادي من قاعدة البيانات
-        // ===============================================================
-
+        // تسجيل دخول من قاعدة البيانات
         const admin = await Admin.findOne({ email: email.toLowerCase().trim() });
 
         if (!admin) {
@@ -130,11 +120,9 @@ export const verifyToken = async (req, res) => {
 
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // دعم MASTER
         if (decoded.id === "MASTER") {
             return res.json({
                 success: true,
-                message: "جلسة الماستر صالحة",
                 admin: decoded
             });
         }
@@ -152,14 +140,13 @@ export const verifyToken = async (req, res) => {
 
         return res.json({
             success: true,
-            message: "جلسة صالحة",
             admin
         });
 
     } catch (error) {
         return res.status(401).json({
             success: false,
-            message: "الجلسة غير صالحة أو انتهت صلاحيتها"
+            message: "الجلسة غير صالحة أو منتهية"
         });
     }
 };
@@ -169,25 +156,17 @@ export const verifyToken = async (req, res) => {
 // ===============================================================
 
 export const logout = (req, res) => {
-    try {
-        res.clearCookie("admin_token", {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            path: "/"
-        });
+    res.clearCookie("admin_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/"
+    });
 
-        return res.json({
-            success: true,
-            message: "تم تسجيل الخروج"
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: "خطأ في تسجيل الخروج"
-        });
-    }
+    return res.json({
+        success: true,
+        message: "تم تسجيل الخروج"
+    });
 };
 
 // ===============================================================
@@ -207,7 +186,6 @@ export const getAdminProfile = async (req, res) => {
 
         const decoded = jwt.verify(token, JWT_SECRET);
 
-        // MASTER
         if (decoded.id === "MASTER") {
             return res.json({
                 success: true,
@@ -219,23 +197,15 @@ export const getAdminProfile = async (req, res) => {
             "-password -loginAttempts -lockUntil"
         );
 
-        if (!admin) {
-            return res.status(404).json({
-                success: false,
-                message: "الحساب غير موجود"
-            });
-        }
-
         return res.json({
             success: true,
             admin
         });
 
     } catch (error) {
-        console.error("Profile error:", error);
-        return res.status(401).json({
+        return res.status(500).json({
             success: false,
-            message: "جلسة غير صالحة"
+            message: "خطأ في جلب الملف الشخصي"
         });
     }
 };
@@ -248,7 +218,6 @@ export const testEndpoint = (req, res) => {
     res.json({
         success: true,
         message: "Admin Auth API working",
-        version: "3.0",
         time: new Date().toISOString()
     });
 };
