@@ -10,7 +10,6 @@ import fs from "fs";
 import { fileURLToPath } from "url";
 
 // تحميل متغيرات البيئة
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), "config.env") });
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
@@ -180,6 +179,9 @@ app.use("/api/stats", apiLimiter, statsRoutes);
 const connectDB = async () => {
   try {
     console.log("⏳ Connecting to MongoDB Atlas...");
+    console.log("MONGO_URI from env:", process.env.MONGO_URI);
+    console.log("NODE_ENV:", process.env.NODE_ENV);
+    
     await mongoose.connect(process.env.MONGO_URI, {
       useNewUrlParser: true,
       useUnifiedTopology: true,
@@ -200,9 +202,10 @@ const startServer = async () => {
   // إنشاء الأدمن الافتراضي إذا لم يكن موجوداً
   await createDefaultAdmin();
 
-  app.listen(PORT, () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log("============================================================");
     console.log(`🚀 Server running at: http://localhost:${PORT}`);
+    console.log(`🌐 External access: http://84.247.170.23:${PORT}`);
     console.log("============================================================");
     console.log("📂 Frontend:", `http://localhost:${PORT}/`);
     console.log("🔐 Admin Panel:", `http://localhost:${PORT}/admin/login.html`);
