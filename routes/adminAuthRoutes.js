@@ -1,19 +1,33 @@
+// ===============================================================
+// adminAuthRoutes.js
+// ===============================================================
+
 import express from "express";
 import {
     loginAdmin,
     verifyToken,
     logout,
-    getAdminProfile
+    getAdminProfile,
+    testEndpoint
 } from "../controllers/adminAuthController.js";
+
+import { authAdmin } from "../middleware/authAdmin.js";
 
 const router = express.Router();
 
-router.post("/auth/login", loginAdmin);
+// تسجيل الدخول
+router.post("/login", loginAdmin);
 
-router.get("/auth/verify", verifyToken);
+// تحقق من التوكن
+router.get("/verify", verifyToken);
 
-router.post("/auth/logout", logout);
+// تسجيل الخروج
+router.post("/logout", logout);
 
-router.get("/auth/profile", verifyToken, getAdminProfile);
+// الملف الشخصي للأدمن
+router.get("/profile", authAdmin, getAdminProfile);
+
+// نقطة اختبار
+router.get("/test", testEndpoint);
 
 export default router;
