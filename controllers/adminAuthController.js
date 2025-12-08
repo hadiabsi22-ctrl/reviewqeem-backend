@@ -2,25 +2,29 @@ import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || "reviewqeem_admin_secret_2025";
 
+// ======================
+//  Login Admin
+// ======================
 export const loginAdmin = (req, res) => {
     const { email, password } = req.body;
-    
-    // ⚠️ **الحل المباشر: يقبل أي بريد أدمن + كلمة مرور Admin@123**
+
+    // قائمة الإيميلات المسموح بها
     const ALLOWED_EMAILS = [
-        'admin@reviewqeem.com',
-        'master@reviewqeem.com', 
-        'temp@example.com',
-        'hadi@reviewqeem.com',
-        'test@reviewqeem.com'
+        "admin@reviewqeem.com",
+        "master@reviewqeem.com",
+        "temp@example.com",
+        "hadi@reviewqeem.com",
+        "test@reviewqeem.com"
     ];
-    
+
+    // كلمة المرور الموحدة
     const CORRECT_PASSWORD = "Admin@123";
-    
+
     if (ALLOWED_EMAILS.includes(email) && password === CORRECT_PASSWORD) {
         const admin = {
             id: "admin_fixed_001",
-            email: email,
-            name: "مدير النظام",
+            email,
+            name: "Super Admin",
             role: "super_admin",
             permissions: ["all"]
         };
@@ -37,18 +41,22 @@ export const loginAdmin = (req, res) => {
 
         return res.json({
             success: true,
-            message: "✅ تم الدخول بنجاح!",
-            admin: admin
+            message: "✅ تم تسجيل الدخول بنجاح",
+            admin
         });
     }
 
-    // إذا فشل
+    // بيانات خاطئة
     return res.status(401).json({
         success: false,
         message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
     });
 };
 
+
+// ======================
+//  Verify Token
+// ======================
 export const verifyToken = (req, res) => {
     try {
         const token = req.cookies.admin_token;
@@ -56,7 +64,7 @@ export const verifyToken = (req, res) => {
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: "لا توجد جلسة نشطة"
+                message: "لا توجد جلسة دخول"
             });
         }
 
@@ -75,15 +83,19 @@ export const verifyToken = (req, res) => {
     }
 };
 
+
+// ======================
+//  Logout Admin
+// ======================
 export const logout = (req, res) => {
     res.clearCookie("admin_token", {
         path: "/",
         secure: true,
-        sameSite: "none",
+        sameSite: "none"
     });
 
     return res.json({
         success: true,
-        message: "تم تسجيل الخروج"
+        message: "تم تسجيل الخروج بنجاح"
     });
 };
