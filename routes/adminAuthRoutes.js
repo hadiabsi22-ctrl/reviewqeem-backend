@@ -1,31 +1,19 @@
-// ===============================================================
-// adminAuthRoutes.js - مسارات مصادقة الأدمن (نسخة B)
-// ===============================================================
-
 import express from "express";
 import {
     loginAdmin,
     verifyToken,
     logout,
-    getAdminProfile,
-    testEndpoint
+    getAdminProfile
 } from "../controllers/adminAuthController.js";
 
 const router = express.Router();
 
-// تسجيل الدخول
-router.post("/login", loginAdmin);
+router.post("/auth/login", loginAdmin);
 
-// التحقق من الجلسة
 router.get("/auth/verify", verifyToken);
 
-// تسجيل الخروج
-router.post("/logout", logout);
+router.post("/auth/logout", logout);
 
-// الملف الشخصي
-router.get("/profile", verifyToken, getAdminProfile);
-
-// نقطة اختبار
-router.get("/test", testEndpoint);
+router.get("/auth/profile", verifyToken, getAdminProfile);
 
 export default router;
