@@ -1,54 +1,81 @@
 // ===============================================================
-// adminAuthController.js – الإصدار النهائي المتوافق
+// adminAuthController.js - Authentication Controller
 // ===============================================================
 
 import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import Admin from "../models/Admin.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "reviewqeem_admin_secret_2025";
 
-// بيانات الأدمن الثابتة (لحين إضافة DB)
-const ADMIN_EMAIL = "admin@reviewqeem.com";
-const ADMIN_PASSWORD = "Admin@123";
+// ---------------------------------------------------------------
+// LOGIN ADMIN
+// ---------------------------------------------------------------
+export const loginAdmin = async (req, res) => {
+    try {
+        const { email, password } = req.body;
 
-export const loginAdmin = (req, res) => {
-    const { email, password } = req.body;
+        const admin = await Admin.findOne({ email });
 
-    if (email !== ADMIN_EMAIL || password !== ADMIN_PASSWORD) {
-        return res.status(401).json({
+        if (!admin) {
+            return res.status(401).json({
+                success: false,
+                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+            });
+        }
+
+        const isMatch = await bcrypt.compare(password, admin.password);
+        if (!isMatch) {
+            return res.status(401).json({
+                success: false,
+                message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+            });
+        }
+
+        const token = jwt.sign(
+            {
+                id: admin._id,
+                email: admin.email,
+                role: admin.role
+            },
+            JWT_SECRET,
+            { expiresIn: "24h" }
+        );
+
+        res.cookie("admin_token", token, {
+            httpOnly: true,
+            secure: true,
+            sameSite: "none",
+            maxAge: 24 * 60 * 60 * 1000,
+            path: "/"
+        });
+
+        return res.json({
+            success: true,
+            message: "تم تسجيل الدخول بنجاح",
+            admin
+        });
+
+    } catch (error) {
+        console.error("Login Error:", error);
+        return res.status(500).json({
             success: false,
-            message: "البريد الإلكتروني أو كلمة المرور غير صحيحة"
+            message: "خطأ في الخادم"
         });
     }
-
-    const admin = {
-        id: "MASTER",       // ← مهم جداً لمطابقة الـ middleware
-        email: ADMIN_EMAIL,
-        role: "super_admin"
-    };
-
-    const token = jwt.sign(admin, JWT_SECRET, { expiresIn: "24h" });
-
-    res.cookie("admin_token", token, {
-        httpOnly: true,
-        secure: false,       // ← مؤقتًا للتجربة، بعدين نخليه true مع SSL
-        sameSite: "lax",
-        path: "/"
-    });
-
-    return res.json({
-        success: true,
-        admin
-    });
 };
 
-
+// ---------------------------------------------------------------
+// VERIFY TOKEN
+// ---------------------------------------------------------------
 export const verifyToken = (req, res) => {
     try {
         const token = req.cookies.admin_token;
+
         if (!token) {
             return res.status(401).json({
                 success: false,
-                message: "لا توجد جلسة تسجيل دخول"
+                message: "لا يوجد توكن، يرجى تسجيل الدخول"
             });
         }
 
@@ -62,14 +89,19 @@ export const verifyToken = (req, res) => {
     } catch (error) {
         return res.status(401).json({
             success: false,
-            message: "جلسة غير صالحة أو منتهية"
+            message: "جلسة غير صالحة"
         });
     }
 };
 
-
+// ---------------------------------------------------------------
+// LOGOUT
+// ---------------------------------------------------------------
 export const logout = (req, res) => {
     res.clearCookie("admin_token", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none",
         path: "/"
     });
 
@@ -79,14 +111,21 @@ export const logout = (req, res) => {
     });
 };
 
-
-export const getAdminProfile = (req, res) => {
-    return res.json({
-        success: true,
-        admin: req.admin
-    });
+// ---------------------------------------------------------------
+// GET ADMIN PROFILE  (مهم جداً - هذا اللي كان ناقص ويسبب الخطأ)
+// ---------------------------------------------------------------
+export const getAdminProfile = async (req, res) => {
+    try {
+        const admin = await Admin.findById(req.admin.id).select("-password");
+        return res.json({ success: true, admin });
+    } catch (error) {
+        return res.status(500).json({ success: false, message: "خطأ في الخادم" });
+    }
 };
 
+// ---------------------------------------------------------------
+// TEST ENDPOINT
+// ---------------------------------------------------------------
 export const testEndpoint = (req, res) => {
-    res.json({ success: true, message: "Admin API OK" });
+    res.json({ success: true, message: "Test OK" });
 };
